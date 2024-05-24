@@ -32,11 +32,14 @@ import google.oauth2.service_account
 from google.auth import impersonated_credentials  # type: ignore[attr-defined]
 from google.auth.credentials import AnonymousCredentials, Credentials
 from google.auth.environment_vars import CREDENTIALS, LEGACY_PROJECT, PROJECT
+from google.auth import identity_pool
+from google.auth.transport.requests import Request
 
 from airflow.exceptions import AirflowException
 from airflow.providers.google.cloud._internal_client.secret_manager_client import _SecretManagerClient
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.process_utils import patch_environ
+from airflow.providers.google.common.utils.external_token import KeyCloakTokenSupplier
 
 log = logging.getLogger(__name__)
 
@@ -210,12 +213,15 @@ class _CredentialProvider(LoggingMixin):
         target_principal: str | None = None,
         delegates: Sequence[str] | None = None,
         is_anonymous: bool | None = None,
+        idp_link: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
     ) -> None:
         super().__init__()
         key_options = [key_path, keyfile_dict, credential_config_file, key_secret_name, is_anonymous]
         if len([x for x in key_options if x]) > 1:
             raise AirflowException(
-                "The `keyfile_dict`, `key_path`, `credential_config_file`, `is_anonymous` and"
+                "The `keyfile_dict`, `key_path`, `credential_config_file`, `is_anonymous` , 'keycloak_link'"
                 " `key_secret_name` fields are all mutually exclusive. Please provide only one value."
             )
         self.key_path = key_path
@@ -229,6 +235,9 @@ class _CredentialProvider(LoggingMixin):
         self.target_principal = target_principal
         self.delegates = delegates
         self.is_anonymous = is_anonymous
+        self.idp_link = idp_link
+        self.client_id = client_id
+        self.client_secret = client_secret
 
     def get_credentials_and_project(self) -> tuple[Credentials, str]:
         """
@@ -247,6 +256,8 @@ class _CredentialProvider(LoggingMixin):
                 credentials, project_id = self._get_credentials_using_key_secret_name()
             elif self.keyfile_dict:
                 credentials, project_id = self._get_credentials_using_keyfile_dict()
+            elif self.idp_link:
+                credentials, project_id = self._get_credentials_using_idp()
             elif self.credential_config_file:
                 credentials, project_id = self._get_credentials_using_credential_config_file()
             else:
@@ -331,9 +342,11 @@ class _CredentialProvider(LoggingMixin):
             self._log_info(
                 f"Getting connection using credential configuration file: `{self.credential_config_file}`"
             )
+
             credentials, project_id = google.auth.load_credentials_from_file(
                 self.credential_config_file, scopes=self.scopes
             )
+
         else:
             with tempfile.NamedTemporaryFile(mode="w+t") as temp_credentials_fd:
                 if isinstance(self.credential_config_file, dict):
@@ -349,6 +362,20 @@ class _CredentialProvider(LoggingMixin):
                 )
 
         return credentials, project_id
+
+    def _get_credentials_using_idp(self):
+        if (not self.credential_config_file):
+            raise AirflowException("Credential configuration is needed to use authentication by External Identity Provider")
+
+        token_supplier = KeyCloakTokenSupplier(self.idp_link, self.client_id, self.client_secret)
+        info = json.loads(self.credential_config_file)
+        credentials = identity_pool.Credentials(
+            audience=info['audience'],
+            subject_token_type=info['subject_token_type'],
+            service_account_impersonation_url=info['service_account_impersonation_url'],
+            subject_token_supplier=token_supplier,
+        )
+        return credentials, credentials.get_project_id(Request())
 
     def _get_credentials_using_adc(self):
         self._log_info(
