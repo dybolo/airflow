@@ -248,9 +248,15 @@ class GoogleBaseHook(BaseHook):
             "impersonation_chain": StringField(
                 lazy_gettext("Impersonation Chain"), widget=BS3TextFieldWidget()
             ),
-            "Keycloak Provider link": StringField(lazy_gettext("KeyCloak Link"), widget=BS3TextFieldWidget()),
-            "CLient Id": StringField(lazy_gettext("KeyCloak Client ID"), widget=BS3TextFieldWidget()),
-            "Client Secret": StringField(lazy_gettext("KeyCloak Client Secret"), widget=BS3TextFieldWidget()),
+            "Identity Provider link": StringField(
+                lazy_gettext("IdP Token Issue URL (Client Credentials Flow)"), widget=BS3TextFieldWidget()
+            ),
+            "CLient Id": StringField(
+                lazy_gettext("Client ID (Client Credentials Flow)"), widget=BS3TextFieldWidget()
+            ),
+            "Client Secret": StringField(
+                lazy_gettext("KeyCloak Client Secret (Client Credentials Flow)"), widget=BS3TextFieldWidget()
+            ),
             "is_anonymous": BooleanField(
                 lazy_gettext("Anonymous credentials (ignores all other settings)"), default=False
             ),
@@ -300,7 +306,7 @@ class GoogleBaseHook(BaseHook):
 
         credential_config_file: str | None = self._get_field("credential_config_file", None)
 
-        idp_link: str | None = self._get_field("Keycloak Provider link", None)
+        idp_link: str | None = self._get_field("Identity Provider link", None)
         client_id: str | None = self._get_field("CLient Id", None)
         client_secret: str | None = self._get_field("Client Secret", None)
 
