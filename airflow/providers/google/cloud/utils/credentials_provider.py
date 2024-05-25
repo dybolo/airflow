@@ -37,7 +37,9 @@ from google.auth.environment_vars import CREDENTIALS, LEGACY_PROJECT, PROJECT
 
 from airflow.exceptions import AirflowException
 from airflow.providers.google.cloud._internal_client.secret_manager_client import _SecretManagerClient
-from airflow.providers.google.cloud.utils.external_token_supplier import ClientCredentialsGrantFlowTokenSupplier 
+from airflow.providers.google.cloud.utils.external_token_supplier import (
+    ClientCredentialsGrantFlowTokenSupplier,
+)
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.process_utils import patch_environ
 
@@ -216,7 +218,7 @@ class _CredentialProvider(LoggingMixin):
         idp_issuer_url: str | None = None,
         client_id: str | None = None,
         client_secret: str | None = None,
-        idp_extra_params_dict: dict[str,str] | None = None,
+        idp_extra_params_dict: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         key_options = [key_path, keyfile_dict, credential_config_file, key_secret_name, is_anonymous]
@@ -259,7 +261,9 @@ class _CredentialProvider(LoggingMixin):
             elif self.keyfile_dict:
                 credentials, project_id = self._get_credentials_using_keyfile_dict()
             elif self.idp_issuer_url:
-                credentials, project_id = self._get_credentials_using_credential_config_file_and_token_supplier()
+                credentials, project_id = (
+                    self._get_credentials_using_credential_config_file_and_token_supplier()
+                )
             elif self.credential_config_file:
                 credentials, project_id = self._get_credentials_using_credential_config_file()
             else:
@@ -366,7 +370,9 @@ class _CredentialProvider(LoggingMixin):
         return credentials, project_id
 
     def _get_credentials_using_credential_config_file_and_token_supplier(self):
-        self._log_info("Getting connection using credential configuration file and external Identity Provider.")
+        self._log_info(
+            "Getting connection using credential configuration file and external Identity Provider."
+        )
 
         if not self.credential_config_file:
             raise AirflowException(
@@ -374,7 +380,9 @@ class _CredentialProvider(LoggingMixin):
             )
 
         info = _get_info_from_credential_configuration_file(self.credential_config_file)
-        info["subject_token_supplier"] = ClientCredentialsGrantFlowTokenSupplier(oidc_issuer_url=self.idp_issuer_url, client_id=self.client_id, client_secret=self.client_secret)
+        info["subject_token_supplier"] = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=self.idp_issuer_url, client_id=self.client_id, client_secret=self.client_secret
+        )
 
         credentials, project_id = google.auth.load_credentials_from_dict(info=info, scopes=self.scopes)
         return credentials, project_id

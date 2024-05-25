@@ -432,7 +432,7 @@ class TestGetGcpCredentialsAndProjectId:
             caplog.clear()
             result = get_credentials_and_project_id(
                 credential_config_file=CREDENTIAL_CONFIG_FILE,
-                idp_link=IDP_LINK,
+                idp_issuer_url=IDP_LINK,
                 client_id=CLIENT_ID,
                 client_secret=CLIENT_SECRET,
             )
@@ -446,7 +446,10 @@ class TestGetGcpCredentialsAndProjectId:
                 scopes=ANY,
             )
             assert result == ("CREDENTIALS", "PROJECT_ID")
-            assert "Getting connection using Identity Provider." in caplog.messages
+            assert (
+                "Getting connection using credential configuration file and external Identity Provider."
+                in caplog.messages
+            )
 
     def test_get_credentials_using_idp_no_credential_config(self):
         with pytest.raises(
@@ -456,7 +459,7 @@ class TestGetGcpCredentialsAndProjectId:
             ),
         ):
             get_credentials_and_project_id(
-                idp_link=IDP_LINK,
+                idp_issuer_url=IDP_LINK,
                 client_id=CLIENT_ID,
                 client_secret=CLIENT_SECRET,
             )
