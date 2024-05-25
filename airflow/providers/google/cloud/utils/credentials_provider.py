@@ -29,17 +29,17 @@ from urllib.parse import urlencode
 
 import google.auth
 import google.oauth2.service_account
-from google.auth import impersonated_credentials  # type: ignore[attr-defined]
+from google.auth import (
+    impersonated_credentials,  # type: ignore[attr-defined]
+)
 from google.auth.credentials import AnonymousCredentials, Credentials
 from google.auth.environment_vars import CREDENTIALS, LEGACY_PROJECT, PROJECT
-from google.auth import identity_pool
-from google.auth.transport.requests import Request
 
 from airflow.exceptions import AirflowException
 from airflow.providers.google.cloud._internal_client.secret_manager_client import _SecretManagerClient
+from airflow.providers.google.common.utils.external_token import KeyCloakTokenSupplier
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.process_utils import patch_environ
-from airflow.providers.google.common.utils.external_token import KeyCloakTokenSupplier
 
 log = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ class _CredentialProvider(LoggingMixin):
         key_options = [key_path, keyfile_dict, credential_config_file, key_secret_name, is_anonymous]
         if len([x for x in key_options if x]) > 1:
             raise AirflowException(
-                "The `keyfile_dict`, `key_path`, `credential_config_file`, `is_anonymous` , 'keycloak_link'"
+                "The `keyfile_dict`, `key_path`, `credential_config_file`, `is_anonymous` and"
                 " `key_secret_name` fields are all mutually exclusive. Please provide only one value."
             )
         self.key_path = key_path
@@ -364,18 +364,19 @@ class _CredentialProvider(LoggingMixin):
         return credentials, project_id
 
     def _get_credentials_using_idp(self):
-        if (not self.credential_config_file):
-            raise AirflowException("Credential configuration is needed to use authentication by External Identity Provider")
+        self._log_info("Getting connection using Identity Provider.")
+
+        if not self.credential_config_file:
+            raise AirflowException(
+                "Credential configuration is needed to use authentication by External Identity Provider."
+            )
 
         token_supplier = KeyCloakTokenSupplier(self.idp_link, self.client_id, self.client_secret)
-        info = json.loads(self.credential_config_file)
-        credentials = identity_pool.Credentials(
-            audience=info['audience'],
-            subject_token_type=info['subject_token_type'],
-            service_account_impersonation_url=info['service_account_impersonation_url'],
-            subject_token_supplier=token_supplier,
-        )
-        return credentials, credentials.get_project_id(Request())
+        info = _get_info_from_credential_configuration_file(self.credential_config_file)
+        info["subject_token_supplier"] = token_supplier
+
+        credentials, project_id = google.auth.load_credentials_from_dict(info=info, scopes=self.scopes)
+        return credentials, project_id
 
     def _get_credentials_using_adc(self):
         self._log_info(
@@ -446,3 +447,15 @@ def _get_project_id_from_service_account_email(service_account_email: str) -> st
         raise AirflowException(
             f"Could not extract project_id from service account's email: {service_account_email}."
         )
+
+
+def _get_info_from_credential_configuration_file(credential_configuration_file):
+    if isinstance(credential_configuration_file, str) and os.path.exists(credential_configuration_file):
+        with open(credential_configuration_file) as file_obj:
+            try:
+                info = json.load(file_obj)
+            except ValueError:
+                raise AirflowException("Credentials Configuration File is not a valid json file.")
+    else:
+        info = json.loads(credential_configuration_file)
+    return info

@@ -248,14 +248,9 @@ class GoogleBaseHook(BaseHook):
             "impersonation_chain": StringField(
                 lazy_gettext("Impersonation Chain"), widget=BS3TextFieldWidget()
             ),
-            "Keycloak Provider link": StringField(
-                lazy_gettext("KeyCloak Link"), widget=BS3TextFieldWidget()),
-            "CLient Id": StringField(
-                lazy_gettext("KeyCloak Client ID"), widget=BS3TextFieldWidget()
-            ),
-            "Client Secret": StringField(
-                lazy_gettext("KeyCloak Client Secret"), widget=BS3TextFieldWidget()
-            ),
+            "Keycloak Provider link": StringField(lazy_gettext("KeyCloak Link"), widget=BS3TextFieldWidget()),
+            "CLient Id": StringField(lazy_gettext("KeyCloak Client ID"), widget=BS3TextFieldWidget()),
+            "Client Secret": StringField(lazy_gettext("KeyCloak Client Secret"), widget=BS3TextFieldWidget()),
             "is_anonymous": BooleanField(
                 lazy_gettext("Anonymous credentials (ignores all other settings)"), default=False
             ),
@@ -330,7 +325,7 @@ class GoogleBaseHook(BaseHook):
             is_anonymous=is_anonymous,
             idp_link=idp_link,
             client_id=client_id,
-            client_secret=client_secret
+            client_secret=client_secret,
         )
 
         overridden_project_id = self._get_field("project")
