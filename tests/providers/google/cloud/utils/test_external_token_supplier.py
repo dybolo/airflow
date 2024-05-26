@@ -16,47 +16,105 @@
 # under the License.
 from __future__ import annotations
 
-import logging
 from unittest.mock import ANY
 
-import pytest
+import requests_mock
 
 from airflow.providers.google.cloud.utils.external_token_supplier import (
     ClientCredentialsGrantFlowTokenSupplier,
 )
 
-ISSUER_URL = "https://testidpissuerurl.com"
-CLIENT_ID = "clientid"
-CLIENT_SECRET = "clientsecret"
-
-TOKEN1 = "token1"
-TOKEN2 = "token2"
-EXPIRES_IN = 60
-EXPIRED = -1
-SUPPLIER_LOGGER_NAME = (
-    "airflow.providers.google.cloud.utils.external_token_supplier.ClientCredentialsGrantFlowTokenSupplier"
-)
+MOCK_URL1 = "http://mock-idp/token1"
+MOCK_URL2 = "http://mock-idp/token2"
+MOCK_URL3 = "http://mock-idp/token3"
+MOCK_URL4 = "http://mock-idp/token4"
+CLIENT_ID = "test-client-id"
+CLIENT_ID2 = "test-client-id2"
+CLIENT_SECRET = "test-client-secret"
+CLIENT_SECRET2 = "test-client-secret2"
 
 
 class TestClientCredentialsGrantFlowTokenSupplier:
-    @pytest.fixture
-    def token_supplier(self):
-        return ClientCredentialsGrantFlowTokenSupplier(ISSUER_URL, CLIENT_ID, CLIENT_SECRET)
+    def test_get_subject_token_success(self):
+        token_supplier = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL1,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+        )
 
-    def test_get_subject_token_first_time(self, requests_mock, token_supplier):
-        requests_mock.post(ISSUER_URL, json={"access_token": TOKEN1, "expires_in": EXPIRES_IN})
-        assert token_supplier.get_subject_token(context=ANY, request=ANY) == TOKEN1
+        with requests_mock.Mocker() as m:
+            m.post(MOCK_URL1, json={"access_token": "mock-token", "expires_in": 3600})
+            token = token_supplier.get_subject_token(ANY, ANY)
 
-    def test_get_subject_token_has_valid_token(self, requests_mock, token_supplier):
-        requests_mock.post(ISSUER_URL, json={"access_token": TOKEN1, "expires_in": EXPIRES_IN})
-        assert token_supplier.get_subject_token(context=ANY, request=ANY) == TOKEN1
-        requests_mock.post(ISSUER_URL, json={"access_token": TOKEN2, "expires_in": EXPIRES_IN})
-        assert token_supplier.get_subject_token(context=ANY, request=ANY) == TOKEN1
+        assert token == "mock-token"
 
-    def test_get_subject_token_expired(self, requests_mock, token_supplier, caplog):
-        requests_mock.post(ISSUER_URL, json={"access_token": TOKEN1, "expires_in": EXPIRED})
-        token_supplier.get_subject_token(context=ANY, request=ANY)
-        with caplog.at_level(level=logging.INFO, logger=SUPPLIER_LOGGER_NAME):
-            caplog.clear()
-            token_supplier.get_subject_token(context=ANY, request=ANY)
-        assert "OIDC token missing or expired" in caplog.messages
+    def test_cache_token_decorator(self):
+        token_supplier = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL2,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+        )
+
+        with requests_mock.Mocker() as m:
+            m.post(MOCK_URL2, json={"access_token": "mock-token", "expires_in": 3600})
+            token = token_supplier.get_subject_token(ANY, ANY)
+
+        assert token == "mock-token"
+
+        # instances with same credentials and url should get previous token
+        token_supplier2 = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL2,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+        )
+
+        with requests_mock.Mocker() as m2:
+            m2.post(MOCK_URL2, json={"access_token": "mock-token2", "expires_in": 3600})
+            token = token_supplier2.get_subject_token(ANY, ANY)
+
+        assert token == "mock-token"
+
+    def test_cache_token_decorator_diff_credentials(self):
+        token_supplier = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL3,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+        )
+
+        with requests_mock.Mocker() as m:
+            m.post(MOCK_URL3, json={"access_token": "mock-token", "expires_in": 3600})
+            token = token_supplier.get_subject_token(ANY, ANY)
+
+        assert token == "mock-token"
+
+        # instances with different credentials and same url should get different tokens
+        token_supplier2 = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL3,
+            client_id=CLIENT_ID2,
+            client_secret=CLIENT_SECRET2,
+        )
+
+        with requests_mock.Mocker() as m2:
+            m2.post(MOCK_URL3, json={"access_token": "mock-token2", "expires_in": 3600})
+            token = token_supplier2.get_subject_token(ANY, ANY)
+
+        assert token == "mock-token2"
+
+    def test_cache_token_expiration_date(self):
+        token_supplier = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL4,
+            client_id=CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+        )
+
+        with requests_mock.Mocker() as m:
+            m.post(MOCK_URL4, json={"access_token": "mock-token", "expires_in": -1})
+            token = token_supplier.get_subject_token(ANY, ANY)
+
+        assert token == "mock-token"
+
+        with requests_mock.Mocker() as m2:
+            m2.post(MOCK_URL4, json={"access_token": "mock-token2", "expires_in": 3600})
+            token = token_supplier.get_subject_token(ANY, ANY)
+
+        assert token == "mock-token2"

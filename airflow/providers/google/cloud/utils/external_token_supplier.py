@@ -40,8 +40,7 @@ def cache_token_decorator(get_subject_token_method):
     See also:
         https://googleapis.dev/python/google-auth/latest/reference/google.auth.identity_pool.html#google.auth.identity_pool.SubjectTokenSupplier.get_subject_token
     """
-    token: str | None = None
-    expiration_time: float = 0
+    cache = {}
 
     @wraps(get_subject_token_method)
     def wrapper(supplier_instance: SubjectTokenSupplier, context: SupplierContext, request: Request) -> str:
@@ -52,13 +51,20 @@ def cache_token_decorator(get_subject_token_method):
         :param request: The object used to make HTTP requests
         :return: The token string
         """
-        nonlocal token, expiration_time
+        nonlocal cache
 
-        if token is None or expiration_time < time.monotonic():
+        cache_key = (
+            supplier_instance.oidc_issuer_url
+            + supplier_instance.client_id
+            + ",".join(sorted(supplier_instance.extra_params_kwargs))
+        )
+        token: dict[str, str | float] = {}
+
+        if cache_key not in cache or cache[cache_key]["expiration_time"] < time.monotonic():
             supplier_instance.log.info("OIDC token missing or expired")
             try:
-                token, expires_in = get_subject_token_method(supplier_instance, context, request)
-                if not isinstance(expires_in, int) or not isinstance(token, str):
+                access_token, expires_in = get_subject_token_method(supplier_instance, context, request)
+                if not isinstance(expires_in, int) or not isinstance(access_token, str):
                     raise RefreshError  # assume error if strange values are provided
 
             except RefreshError:
@@ -66,10 +72,13 @@ def cache_token_decorator(get_subject_token_method):
                 raise
 
             expiration_time = time.monotonic() + float(expires_in)
+            token["access_token"] = access_token
+            token["expiration_time"] = expiration_time
+            cache[cache_key] = token
 
             supplier_instance.log.info("New OIDC token retrieved, expires in %s", expires_in)
 
-        return token
+        return cache[cache_key]["access_token"]
 
     return wrapper
 
