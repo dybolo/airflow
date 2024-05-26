@@ -34,7 +34,10 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 def cache_token_decorator(get_subject_token_method):
     """Cache calls to ``SubjectTokenSupplier`` instances' ``get_token_supplier`` methods.
 
-    :param get_subject_token_method: A method that returns both a token and an integer specifying
+    Different instances of a same SubjectTokenSupplier class with the same credentials and oidc issuer url
+    share access tokens.
+
+    :param get_subject_token_method: A method that returns both a token and a float specifying
         the time in seconds until the token expires
 
     See also:
@@ -56,6 +59,7 @@ def cache_token_decorator(get_subject_token_method):
         cache_key = (
             supplier_instance.oidc_issuer_url
             + supplier_instance.client_id
+            + supplier_instance.client_secret
             + ",".join(sorted(supplier_instance.extra_params_kwargs))
         )
         token: dict[str, str | float] = {}
@@ -115,19 +119,20 @@ class ClientCredentialsGrantFlowTokenSupplier(LoggingMixin, SubjectTokenSupplier
     def get_subject_token(self, context: SupplierContext, request: Request):
         """Perform Client Credentials Grant flow with IdP and retrieves an OIDC token and expiration time."""
         self.log.info("Requesting new OIDC token from Keycloak IdP")
-        response = requests.post(
-            self.oidc_issuer_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                **self.extra_params_kwargs,
-            },
-        )
-
         try:
+            response = requests.post(
+                self.oidc_issuer_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    **self.extra_params_kwargs,
+                },
+            )
             response.raise_for_status()
         except requests.HTTPError as e:
+            raise RefreshError(str(e))
+        except requests.ConnectionError as e:
             raise RefreshError(str(e))
 
         try:

@@ -18,7 +18,9 @@ from __future__ import annotations
 
 from unittest.mock import ANY
 
+import pytest
 import requests_mock
+from google.auth.exceptions import RefreshError
 
 from airflow.providers.google.cloud.utils.external_token_supplier import (
     ClientCredentialsGrantFlowTokenSupplier,
@@ -30,6 +32,7 @@ MOCK_URL3 = "http://mock-idp/token3"
 MOCK_URL4 = "http://mock-idp/token4"
 CLIENT_ID = "test-client-id"
 CLIENT_ID2 = "test-client-id2"
+CLIENT_ID3 = "test-client-id3"
 CLIENT_SECRET = "test-client-secret"
 CLIENT_SECRET2 = "test-client-secret2"
 
@@ -118,3 +121,15 @@ class TestClientCredentialsGrantFlowTokenSupplier:
             token = token_supplier.get_subject_token(ANY, ANY)
 
         assert token == "mock-token2"
+
+    def test_get_subject_token_failure(self):
+        token_supplier = ClientCredentialsGrantFlowTokenSupplier(
+            oidc_issuer_url=MOCK_URL4,
+            client_id=CLIENT_ID3,
+            client_secret=CLIENT_SECRET,
+        )
+        with requests_mock.Mocker() as m:
+            m.post(MOCK_URL4, status_code=400)
+
+        with pytest.raises(RefreshError):
+            token_supplier.get_subject_token(ANY, ANY)
