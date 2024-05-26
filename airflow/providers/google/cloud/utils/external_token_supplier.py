@@ -37,7 +37,7 @@ def cache_token_decorator(get_subject_token_method):
     Different instances of a same SubjectTokenSupplier class with the same credentials and oidc issuer url
     share access tokens.
 
-    :param get_subject_token_method: A method that returns both a token and a float specifying
+    :param get_subject_token_method: A method that returns both a token and an integer specifying
         the time in seconds until the token expires
 
     See also:
@@ -46,12 +46,10 @@ def cache_token_decorator(get_subject_token_method):
     cache = {}
 
     @wraps(get_subject_token_method)
-    def wrapper(supplier_instance: SubjectTokenSupplier, context: SupplierContext, request: Request) -> str:
+    def wrapper(supplier_instance: SubjectTokenSupplier, *args, **kwargs) -> str:
         """Obeys the interface set by ``SubjectTokenSupplier`` for ``get_subject_token`` methods.
 
-        :param supplier_instance: the SubjectTokenSupplier whose get_subject_token method is being decorated
-        :param context: The context object containing information about the requested audience and subject token type
-        :param request: The object used to make HTTP requests
+        :param supplier_instance: the SubjectTokenSupplier instance whose get_subject_token method is being decorated
         :return: The token string
         """
         nonlocal cache
@@ -67,7 +65,7 @@ def cache_token_decorator(get_subject_token_method):
         if cache_key not in cache or cache[cache_key]["expiration_time"] < time.monotonic():
             supplier_instance.log.info("OIDC token missing or expired")
             try:
-                access_token, expires_in = get_subject_token_method(supplier_instance, context, request)
+                access_token, expires_in = get_subject_token_method(supplier_instance, *args, **kwargs)
                 if not isinstance(expires_in, int) or not isinstance(access_token, str):
                     raise RefreshError  # assume error if strange values are provided
 
@@ -116,7 +114,7 @@ class ClientCredentialsGrantFlowTokenSupplier(LoggingMixin, SubjectTokenSupplier
         self.extra_params_kwargs = extra_params_kwargs
 
     @cache_token_decorator
-    def get_subject_token(self, context: SupplierContext, request: Request):
+    def get_subject_token(self, context: SupplierContext, request: Request) -> tuple[str, int]:
         """Perform Client Credentials Grant flow with IdP and retrieves an OIDC token and expiration time."""
         self.log.info("Requesting new OIDC token from Keycloak IdP")
         try:
