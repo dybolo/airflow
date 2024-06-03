@@ -204,7 +204,7 @@ class _CredentialProvider(LoggingMixin):
         self,
         key_path: str | None = None,
         keyfile_dict: dict[str, str] | None = None,
-        credential_config_file: dict[str, str] | str | None = None,
+        credential_config_file: str | None = None,
         key_secret_name: str | None = None,
         key_secret_project_id: str | None = None,
         scopes: Collection[str] | None = None,
@@ -367,12 +367,12 @@ class _CredentialProvider(LoggingMixin):
 
     def _get_credentials_using_credential_config_file_and_token_supplier(self):
         self._log_info(
-            "Getting connection using credential configuration file and external Identity Provider."
+            "Getting connection using Credential Configuration File and External Identity Provider."
         )
 
         if not self.credential_config_file:
             raise AirflowException(
-                "Credential configuration is needed to use authentication by External Identity Provider."
+                "Credential Configuration File is needed to use authentication by External Identity Provider."
             )
 
         info = _get_info_from_credential_configuration_file(self.credential_config_file)
@@ -454,16 +454,18 @@ def _get_project_id_from_service_account_email(service_account_email: str) -> st
         )
 
 
-def _get_info_from_credential_configuration_file(credential_configuration_file):
-    if isinstance(credential_configuration_file, str) and os.path.exists(credential_configuration_file):
+def _get_info_from_credential_configuration_file(credential_configuration_file: str) -> dict[str, str]:
+    if os.path.exists(credential_configuration_file):
         with open(credential_configuration_file) as file_obj:
             try:
                 info = json.load(file_obj)
-            except ValueError:
+            except json.decoder.JSONDecodeError:
                 raise AirflowException("Credentials Configuration File is not a valid json file.")
     else:
         try:
             info = json.loads(credential_configuration_file)
         except json.decoder.JSONDecodeError:
-            raise AirflowException("Invalid JSON.")
+            raise AirflowException("Credentials Configuration File string is not valid json.")
+    
     return info
+    
